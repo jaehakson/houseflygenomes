@@ -1,0 +1,39 @@
+Editing Chromosome 5 in primary assembly to contain ancestral inversion conformation.
+Hap2 has same conformation as aabys, but primary assembly incorporated the hap1 inversion and breakpoints.
+Need to replace the left arm of primary assembly Chromosome 5 with left arm of hap2 Chromosome 5,
+based on alignment target these coordinates for homology block:
+
+/90daydata/vpgru/DavidLuecke/MusD/M2/OUT/MdomM2-pctg_v3.fa /90daydata/vpgru/DavidLuecke/MusD/M2/OUT/MdomM2-hap2_v3.fa
+NUCMER
+
+    [S1]     [E1]  |     [S2]     [E2]  |  [LEN 1]  [LEN 2]  |  [% IDY]  | [TAGS]
+=====================================================================================
+49510522 57189847  | 49759730 57439077  |  7679326  7679348  |    99.99  | Chromosome5	Chromosome5
+
+Sequence at start of block
+hap2:
+>Chromosome5:49759730-49759830
+AAAAATTATTCAGAAATAATCAAATTCGGGTGTTTTCAAAATTTTTATTGCAACGTATAC
+AGCTACAAAATCTAGATCTAGAAATAGAGATATATAGAAAA
+primary:
+>Chromosome5:49510522-49510622
+AAAAATTATTCAGAAAATATTCAAATTCGGGTGTTTTCAAAATTTTTATTGCAACGTATA
+CATATACAAAATCTAGATCTAGAAATAGAGATATGTAGAAA
+
+Combining the two arms, commands:
+samtools faidx MdomM2-hap2_v3.fa Chromosome5:1-49759730 > chopped_Chr5.fa
+samtools faidx MdomM2-pctg_v3.fa Chromosome5:49510523-125356882 | tail -n+2 >> chopped_Chr5.fa 
+seqkit seq -w 60 chopped_Chr5.fa > chopped_Chr5-evenlines.fa 
+
+Use the line numbers for seq headers in pctg_v3 to stitch new primary together:
+1:>Chromosome1
+2890158:>Chromosome2
+6018943:>Chromosome3
+8458248:>Chromosome4
+10782473:>Chromosome5
+12871756:>scaffold_6
+
+Commands:
+head -n 10782472 MdomM2-pctg_v3.fa > MdomM2-pctg_v4.fa
+sed 's/Chromosome5:1-49759730/Chromosome5/' chopped_Chr5-evenlines.fa >> MdomM2-pctg_v4.fa 
+tail -n+12871756 MdomM2-pctg_v3.fa >> MdomM2-pctg_v4.fa 

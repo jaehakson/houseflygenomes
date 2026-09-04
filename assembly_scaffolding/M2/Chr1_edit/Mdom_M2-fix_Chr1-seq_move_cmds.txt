@@ -1,0 +1,52 @@
+# Commands used to remove duplicated inversion block from M2 hap1 and primary, and add to hap2
+
+# extract Chromosome1
+samtools faidx MdomM2-hap1_v2.fa Chromosome1 > fix_Chr1/MdomM2_h1v2-Chr1.fa
+samtools faidx MdomM2-hap2_v3.fa Chromosome1 > fix_Chr1/MdomM2_h2v3-Chr1.fa
+samtools faidx MdomM2-pctg_v4.fa Chromosome1 > fix_Chr1/MdomM2_priV4-Chr1.fa
+
+# split to contigs and map HiC (use contacts to guide edits in JBAT)
+for f in MdomM2_*; do sbatch ~/FlyComparativeGenomics/redo_hic_contacts.slurm $f UZH_R1_001.fastq-001.gz UZH_R2_001.fastq-003.gz; done
+
+# JBAT: trim duplicate copy of inversion from middle of Chr1 in pri & hap1, leave as scaffold_2.
+#   (also broke hap2 at site for insertion, but ended up using split contig version so this is redundant)
+
+# incorporate JBAT edits
+for c in *split.fa; do RunJuicerPost.sh -o ${c%.*} $c ${c%.*}.HiC.bam ${c%.*}.JBAT.assembly.agp ${c%.*}.JBAT.review.assembly; done
+
+# extract Chr1 without inversion duplicate from pri, hap1
+samtools faidx MdomM2_h1v2-Chr1.split.review.FINAL.fa scaffold_1 > MdomM2_h1v2-Chr1.no_duped_inversion.fa
+samtools faidx MdomM2_priV4-Chr1.split.review.FINAL.fa scaffold_1 > MdomM2_priV4-Chr1.no_duped_inversion.fa
+
+# add inversion duplicate from hap1 to hap2
+cp MdomM2_h2v3-Chr1.split.review.FINAL.fa MdomM2_h2v3-Chr1.inversion_added.fa
+samtools faidx MdomM2_h1v2-Chr1.split.review.FINAL.fa scaffold_2 >> MdomM2_h2v3-Chr1.inversion_added.fa
+# split hap2 + inversion to contigs, remap HiC to guide insertion into Chr1 sequence in JBAT
+sbatch ~/FlyComparativeGenomics/redo_hic_contacts.slurm MdomM2_h2v3-Chr1.inversion_added.fa UZH_R1_001.fastq-001.gz UZH_R2_001.fastq-003.gz
+
+# incorporate JBAT edits
+for c in *added.split.fa; do RunJuicerPost.sh -o ${c%.*} $c ${c%.*}.HiC.bam ${c%.*}.JBAT.assembly.agp ${c%.*}.JBAT.review.assembly; done
+
+# Combine edited Chromosome1 with rest of prior assemblies 
+sed 's/scaffold_1/Chromosome1/' MdomM2_priV4-Chr1.no_duped_inversion.fa > MdomM2-pctg_v5.fa
+samtools faidx -r <(cut -f1 ../MdomM2-pctg_v4.fa.fai | grep -v Chromosome1) ../MdomM2-pctg_v4.fa >> MdomM2-pctg_v5.fa
+sed 's/scaffold_1/Chromosome1/' MdomM2_h1v2-Chr1.no_duped_inversion.fa > MdomM2-hap1_v3.fa
+samtools faidx -r <(cut -f1 ../MdomM2-hap1_v2.fa.fai | grep -v Chromosome1) ../MdomM2-hap1_v2.fa >> MdomM2-hap1_v3.fa
+sed 's/scaffold_1/Chromosome1/' MdomM2_h2v3-Chr1.inversion_added.split.review.FINAL.fa > MdomM2-hap2_v4.fa
+samtools faidx -r <(cut -f1 ../MdomM2-hap2_v3.fa.fai | grep -v Chromosome1) ../MdomM2-hap2_v3.fa >> MdomM2-hap2_v4.fa
+
+# Alternate primary v5b with hap2 sequence. Hap2 manipulated to retreive sequence but these edits will not impact final hap2 (v4)
+# Prefer hap2 contigs (ancestral orientation) for primary in this region, requires cutting hap1 inversion plus 5' flanking contig from primary (keeping hap2 inversion copy) and homologous flanking region from hap2
+RunJuicerPost.sh -o MdomM2_priV4-Chr1.wide_trim MdomM2_priV4-Chr1.split.fa MdomM2_priV4-Chr1.split.HiC.bam MdomM2_priV4-Chr1.split.JBAT.assembly.agp MdomM2_priV4-Chr1.split.JBAT.review2.assembly
+RunJuicerPost.sh -o MdomM2_h2v3-Chr1.wide_trim MdomM2_h2v3-Chr1.split.fa MdomM2_h2v3-Chr1.split.HiC.bam MdomM2_h2v3-Chr1.split.JBAT.assembly.agp MdomM2_h2v3-Chr1.split.JBAT.review2.assembly
+
+# add hap2 5' flanking region to primary, remap and curate
+samtools faidx MdomM2_priV4-Chr1.wide_trim.review.FINAL.fa scaffold_1 > MdomM2-pri_v5b-inversion_added.fa
+samtools faidx MdomM2_h2v3-Chr1.wide_trim.review.FINAL.fa scaffold_2 >> MdomM2-pri_v5b-inversion_added.fa
+sbatch ~/FlyComparativeGenomics/redo_hic_contacts.slurm MdomM2-pri_v5b-inversion_added.fa UZH_R1_001.fastq-001.gz UZH_R2_001.fastq-003.gz
+
+# Update primary Chr1 to add hap2 5' flanking next to retained hap2 inversion
+RunJuicerPost.sh -o MdomM2-pri_v5b.Chr1 MdomM2-pri_v5b-inversion_added.split.fa MdomM2-pri_v5b-inversion_added.split.HiC.bam MdomM2-pri_v5b-inversion_added.split.JBAT.assembly.agp MdomM2-pri_v5b-inversion_added.split.JBAT.review.assembly
+# combine new primary M2 Chr1 with rest of previous assembly
+sed 's/scaffold_1/Chromosome1/' MdomM2-pri_v5b.Chr1.review.FINAL.fa > MdomM2-pctg_v5b.fa
+samtools faidx -r <(cut -f1 ../MdomM2-pctg_v4.fa.fai | grep -v Chromosome1) ../MdomM2-pctg_v4.fa >> MdomM2-pctg_v5b.fa
